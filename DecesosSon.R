@@ -7,6 +7,7 @@ library(zip)
 library(extrafont)
 library(showtext)
 library(ggtext)
+library("Cairo")
 
 
 # Datos diarios

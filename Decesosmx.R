@@ -7,6 +7,7 @@ library(zip)
 library(extrafont)
 library(showtext)
 library(ggtext)
+library("Cairo")
 
 
 # Datos diarios
@@ -29,8 +30,6 @@ if(!file.exists(covid.archivo)){
 mx <- read_csv("01Datos/210315COVID19MEXICO.csv") %>% # Cambiar nombre de archivo según la fecha a cargar
   clean_names()
 
-# Filtramos la entidad objetivo para hacer más eficiente el proceso
-son <- mx %>% filter(entidad_res==26)
 
 # Catálogo de municipios
 cve_mpo <- 
@@ -40,7 +39,7 @@ cve_mpo <-
   mutate(cve_mpo = str_c(clave_entidad, clave_municipio))
 
 # Convertir valores numéricos en texto 
-son <- son %>% 
+mx <- mx %>% 
   mutate(origen = case_when(origen == 1 ~ "USMER",
                             origen == 2 ~ "Fuera de USMER",
                             origen == 3 ~ "No especificado"),
@@ -114,7 +113,7 @@ son <- son %>%
                                  entidad_nac == "23" ~ "QUINTANA ROO",
                                  entidad_nac == "24" ~ "SAN LUIS POTOSÍ",
                                  entidad_nac == "25" ~ "SINALOA",
-                                 entidad_nac == "26" ~ "SONORA",
+                                 entidad_nac == "26" ~ "mxORA",
                                  entidad_nac == "27" ~ "TABASCO",
                                  entidad_nac == "28" ~ "TAMAULIPAS",
                                  entidad_nac == "29" ~ "TLAXCALA",
@@ -151,7 +150,7 @@ son <- son %>%
                                         entidad_res == "23" ~ "QUINTANA ROO",
                                         entidad_res == "24" ~ "SAN LUIS POTOSÍ",
                                         entidad_res == "25" ~ "SINALOA",
-                                        entidad_res == "26" ~ "SONORA",
+                                        entidad_res == "26" ~ "mxORA",
                                         entidad_res == "27" ~ "TABASCO",
                                         entidad_res == "28" ~ "TAMAULIPAS",
                                         entidad_res == "29" ~ "TLAXCALA",
@@ -189,7 +188,7 @@ son <- son %>%
                                      entidad_um == "23" ~ "QUINTANA ROO",
                                      entidad_um == "24" ~ "SAN LUIS POTOSÍ",
                                      entidad_um == "25" ~ "SINALOA",
-                                     entidad_um == "26" ~ "SONORA",
+                                     entidad_um == "26" ~ "mxORA",
                                      entidad_um == "27" ~ "TABASCO",
                                      entidad_um == "28" ~ "TAMAULIPAS",
                                      entidad_um == "29" ~ "TLAXCALA",
@@ -288,8 +287,8 @@ son <- son %>%
 
 
 # Unir catálogo de municipios y genera variable "municipio" ----
-son <- 
-  son %>%
+mx <- 
+  mx %>%
   left_join(cve_mpo %>% select(municipio, cve_mpo), 
             by = "cve_mpo") %>%
   mutate(municipio = str_to_title(municipio),
@@ -301,24 +300,24 @@ son <-
 ## Generación de columnas adicionales
 
 # Días desde el inicio de síntomas
-son <- 
-  son %>% mutate(dias_sintomas=as.numeric(Sys.Date()-fecha_sintomas)) 
+mx <- 
+  mx %>% mutate(dias_sintomas=as.numeric(Sys.Date()-fecha_sintomas)) 
 
 # Casos Activos
-son <- 
-  son %>% mutate(activo=if_else(dias_sintomas>13,"No", "Sí"))
+mx <- 
+  mx %>% mutate(activo=if_else(dias_sintomas>13,"No", "Sí"))
 
 # Decesos
-son <- 
-  son %>% mutate(deceso=if_else(is.na(fecha_def),"No", "Sí"))
+mx <- 
+  mx %>% mutate(deceso=if_else(is.na(fecha_def),"No", "Sí"))
 
 # Días en acudir a la Unidad Médica
-son <- 
-  son %>% mutate (días_atención = (as.Date(fecha_ingreso)-as.Date(fecha_sintomas)))
+mx <- 
+  mx %>% mutate (días_atención = (as.Date(fecha_ingreso)-as.Date(fecha_sintomas)))
 
 # Tiene comorbilidades
-son <- 
-  son %>% mutate (comorbilidades = if_else((diabetes=="Sí"|
+mx <- 
+  mx %>% mutate (comorbilidades = if_else((diabetes=="Sí"|
                                                  epoc=="Sí"|
                                                  hipertension=="Sí"|
                                                  asma=="Sí"|
@@ -329,49 +328,40 @@ son <-
                                                  renal_cronica=="Sí"|
                                                  tabaquismo=="Sí"), 
                                               "Sí", "No"))
-son <- 
-  son %>% mutate (mayor60 = if_else(edad>=60,"Sí", "No"))
-
-
-write.csv(son,(str_c("02Resultados/SONCOVID", str_replace_all(str_replace_all(str_replace_all(Sys.Date(), "\\:", "_"), "-", "_"), " ", "_"),".csv")))
+mx <- 
+  mx %>% mutate (mayor60 = if_else(edad>=60,"Sí", "No"))
 
 ## Gráfica de Decesos
 
 # Filtramos decesos  confirmados y sospechosos
-son_decesos <- son %>%  
+mx_decesos <- mx %>%  
   select(id_registro, clasificacion_final_simple, deceso, fecha_def) %>% 
   filter(clasificacion_final_simple!="Descartado", deceso=="Sí") 
 
-ggplot(son_decesos, aes(fecha_def, deceso)) +
-  geom_jitter(aes(color=clasificacion_final_simple), alpha=0.4, width = 0.9, height = 0.5, size=0.5) + # Cada punto es un deceso
+ggplot(mx_decesos, aes(fecha_def, deceso)) +
+  geom_jitter(aes(color=clasificacion_final_simple), alpha=0.1, width = 0.9, height = 0.5, size=0.3) + # Cada punto es un deceso
   geom_text(aes(x = as.Date("2020-02-15"), y = "Sí",
                 label = "Cada círculo representa a una\npersona fallecida por covid-19"), stat = "unique", family = "Lato Black", #texto aclaratorio
-            size = 2.5, color = "#993366")+ 
-  geom_vline(xintercept=as.Date("2020-06-01"), linetype="dashed", color = "red", size=0.5) + # Líneas de cambio de semáforo 
-  geom_vline(xintercept=as.Date("2020-07-20"), linetype="dashed", color = "orange", size=0.5) +
-  geom_vline(xintercept=as.Date("2020-08-31"), linetype="dashed", color = "yellow", size=0.5) +
-  geom_vline(xintercept=as.Date("2020-11-09"), linetype="dashed", color = "orange", size=0.5) +
-  geom_vline(xintercept=as.Date("2021-02-15"), linetype="dashed", color = "yellow", size=0.5) +
-  geom_vline(xintercept=as.Date("2021-03-15"), linetype="dashed", color = "green", size=0.5) +
-  scale_x_date(date_breaks = "1 month", date_labels = "%B") +
+            size = 10, color = "#993366")+ 
+  scale_x_date(date_breaks = "1 month", date_labels = "%B\n%Y") +
+  coord_flip()+
   scale_color_manual(values=c("#993366", "#58BCBC"))+ 
   guides(colour = guide_legend(nrow = 1)) + # Leyenda en un renglón 
-  theme_minimal() + theme (plot.title = element_markdown(family = "Lato Black", size = 25),  # element_markdown para uso de texto enriquecido en título con ggtext
-                           plot.subtitle = element_text(family = "Lato Light", size = 10, color = "gray50"), legend.title = element_blank(),
-                           strip.text = element_text(family = "Lato Black", size = 8),
-                           axis.text.x = element_text(family = "Lato", size =7), axis.text.y = element_blank(),
+  theme_minimal() + theme (plot.title = element_markdown(family = "Lato Black", size = 35),  # element_markdown para uso de texto enriquecido en título con ggtext
+                           plot.subtitle = element_text(family = "Lato Light", size = 18, color = "gray50"), legend.title = element_blank(),
+                           axis.text.y = element_text(family = "Lato", size =14), axis.text.x = element_blank(),
                            plot.background = element_rect(fill = "white", color = "black", size = 2.5),
-                           axis.title.x = element_text(family = "Lato Light", size = 8, hjust=0),
-                           axis.title.y = element_text(family = "Lato Light", size =7, hjust=1), 
-                           plot.caption = element_text(family = "Lato", size = 8, color = "#58BCBC"), panel.grid.major.x = element_line(size=0.2), 
-                           panel.grid.major.y = element_blank(), legend.key.height = unit (0.2, "cm"), legend.key.width = unit (0.2, "cm"),
-                           legend.text = element_text(family = "Lato", size = 8),legend.position = c(0,0.95), legend.justification="left",
+                           axis.title.y = element_text(family = "Lato Light", size = 16, hjust=0),
+                           axis.title.x = element_text(family = "Lato Light", size =14, hjust=1), 
+                           plot.caption = element_text(family = "Lato", size = 15, color = "#58BCBC"), panel.grid.major.y = element_line(size=0.4), 
+                           panel.grid.major.x = element_blank(), legend.key.height = unit (0.5, "cm"), legend.key.width = unit (0.5, "cm"),
+                           legend.text = element_text(family = "Lato", size = 16),legend.position = "top", legend.justification="left",
                            panel.grid.minor= element_blank(), plot.margin = unit(c(0.5,0.5,0.3,0.5), "cm"), legend.margin=margin(t = 0, unit='cm')) +
   labs(y = NULL, 
        x = NULL,legend= NULL, 
-       title  = "<span style = 'font-size:16pt'>A un año del primer caso confirmado de Covid-19,</span><br><span style = 'color:#993366'; 'font-size:25pt'>6,362 sonorenses</span> nos hacen falta", 
-       subtitle= "Decesos confirmados y sospechosos con residencia en la Entidad por fecha de ocurridos.\nCorte al 15 de marzo de 2021.", 
-       caption ="Elaboración: Luis Armando Moreno (@dogomoreno) con información de la Secretaría de Salud federal") # ggtext para texto enriquecido en título
+       title  = "<span style = 'font-size:22pt'>A un año del primer caso confirmado de Covid-19,</span><br><span style = 'color:#993366'; 'font-size:35pt'>212,647 mexicanos</span><br>nos hacen falta", 
+       subtitle= "Decesos confirmados y sospechosos por fecha de ocurridos.\nCorte al 15 de marzo de 2021.", 
+       caption ="Elaboración: Luis Armando Moreno (@dogomoreno)\ncon información de la Secretaría de Salud federal") # ggtext para texto enriquecido en título
 
-ggsave("03Gráficos/DecesosSonora.png", width = 5 * (16/9), height = 5, type = "cairo", dpi = 300)
+ggsave("03Gráficos/Decesosmx.png", width = 5 * (16/9), height = 5* (16/9)* (16/9), type = "cairo", dpi = 300)
 
